@@ -1,0 +1,44 @@
+import 'server-only';
+import type { NextRequest } from 'next/server';
+import { handleRoute, fail } from '@/server/api-response';
+import { readSession } from '@/server/session';
+import * as forumApi from '@/server/ksm/modules/forum';
+import { resolveUserNames } from '@/server/ksm/user-names';
+
+// Résout le nom d'affichage d'un utilisateur pour le figer dans `creatorName` à la création.
+// Best-effort : undefined si la résolution échoue (l'appelant ne bloque pas la création).
+async function resolveCreatorName(userId: string): Promise<string | undefined> {
+  const names = await resolveUserNames([userId]);
+  return names.get(userId) ?? undefined;
+}
+
+// GET /api/forum/groups — groupes publics (VALIDATED)
+export async function GET() {
+  return handleRoute(async () => {
+    const session = await readSession();
+    if (!session) return fail(401, 'UNAUTHORIZED', 'Not authenticated');
+    return forumApi.listPublicGroups(session);
+  });
+}
+
+// POST /api/forum/groups — créer un groupe
+export async function POST(request: NextRequest) {
+  return handleRoute(async () => {
+    const session = await readSession();
+    if (!session) return fail(401, 'UNAUTHORIZED', 'Not authenticated');
+    const body = (await request.json()) as Parameters<typeof forumApi.createGroup>[1];
+    const name = String(body.name ?? '').trim();
+    if (!name) return fail(400, 'VALIDATION_ERROR', 'name is required');
+    const creatorId = body.creatorId ?? session.user.id;
+    // KSM refuse une COMMUNITY sans membres (« so members are required »). Le créateur en est le
+    // premier membre par défaut : on le garantit ici pour que le client n'ait pas à le gérer.
+    const members =
+      body.type === 'COMMUNITY' && (!body.members || body.members.length === 0)
+        ? [creatorId]
+        : body.members;
+    // Le créateur ne fournit aucun nom : on le résout automatiquement depuis son id et on le fige
+    // dans `creatorName` (affiché en modération). On respecte un `creatorName` explicite s'il est fourni.
+    const creatorName = body.creatorName ?? (await resolveCreatorName(creatorId));
+    return forumApi.createGroup(session, { ...body, name, creatorId, creatorName, members });
+  });
+}
