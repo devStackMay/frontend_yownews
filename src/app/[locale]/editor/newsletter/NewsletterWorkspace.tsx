@@ -569,7 +569,8 @@ function RedacteurSpace({ email }: { email: string }) {
 function MyNewslettersSubscribers() {
   const [publications, setPublications] = useState<Publication[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [view, setView] = useState<{ publication: Publication; emails: string[] | null } | null>(null);
+  const [countErrors, setCountErrors] = useState<Record<string, boolean>>({});
+  const [view, setView] = useState<{ publication: Publication; emails: string[] | null; error?: boolean } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -579,7 +580,9 @@ function MyNewslettersSubscribers() {
       mine.forEach((p) => {
         apiFetch<string[]>(`/api/newsletter/newsletters/${p.id}/subscribers`)
           .then((emails) => setCounts((prev) => ({ ...prev, [p.id]: (emails ?? []).length })))
-          .catch(() => {});
+          // Une vraie panne serveur ne doit jamais se confondre avec "0 abonné" — on la
+          // distingue explicitement plutôt que de laisser le compteur silencieusement bloqué.
+          .catch(() => setCountErrors((prev) => ({ ...prev, [p.id]: true })));
       });
     })();
   }, []);
@@ -590,7 +593,7 @@ function MyNewslettersSubscribers() {
       const emails = await apiFetch<string[]>(`/api/newsletter/newsletters/${p.id}/subscribers`);
       setView({ publication: p, emails });
     } catch {
-      setView({ publication: p, emails: [] });
+      setView({ publication: p, emails: null, error: true });
     }
   };
 
@@ -611,8 +614,10 @@ function MyNewslettersSubscribers() {
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: '14px' }}>{p.titre}</div>
-              <div style={{ fontSize: '12px', color: 'var(--gray-500, #6b7280)', marginTop: '2px' }}>
-                {counts[p.id] ?? '…'} abonné{(counts[p.id] ?? 0) > 1 ? 's' : ''}
+              <div style={{ fontSize: '12px', color: countErrors[p.id] ? '#B91C1C' : 'var(--gray-500, #6b7280)', marginTop: '2px' }}>
+                {countErrors[p.id]
+                  ? 'Erreur de chargement'
+                  : `${counts[p.id] ?? '…'} abonné${(counts[p.id] ?? 0) > 1 ? 's' : ''}`}
               </div>
             </div>
             <button type="button" onClick={() => viewSubscribers(p)} style={{
@@ -635,7 +640,11 @@ function MyNewslettersSubscribers() {
             <p style={{ fontSize: '12.5px', color: 'var(--gray-500, #6b7280)', margin: '0 0 16px' }}>
               Catégories, suiveurs du rédacteur et abonnés directs confondus.
             </p>
-            {view.emails === null ? (
+            {view.error ? (
+              <div style={{ color: '#B91C1C', fontSize: '14px' }}>
+                Erreur de chargement des abonnés. Réessaie plus tard ou contacte le support si le problème persiste.
+              </div>
+            ) : view.emails === null ? (
               <div style={{ color: 'var(--gray-400, #9ca3af)', fontSize: '14px' }}>Chargement…</div>
             ) : view.emails.length === 0 ? (
               <div style={{ color: 'var(--gray-500, #6b7280)', fontSize: '14px' }}>Aucun abonné pour l&apos;instant.</div>

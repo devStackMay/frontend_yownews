@@ -30,6 +30,7 @@ function PostThread({ post, userId, onDelete }: { post: ForumPost; userId?: stri
   const [likes, setLikes] = useState(post.numberOfLikes ?? 0);
   const [disliked, setDisliked] = useState(post.postDislikes?.includes(userId ?? '') ?? false);
   const [dislikes, setDislikes] = useState(post.numberOfDislikes ?? 0);
+  const [commentCount, setCommentCount] = useState(post.commentCount ?? 0);
 
   const loadComments = async () => {
     if (open) { setOpen(false); return; }
@@ -62,6 +63,7 @@ function PostThread({ post, userId, onDelete }: { post: ForumPost; userId?: stri
     try {
       const created = await apiFetch<ForumCommentaire>(`/api/forum/commentaires/post/${post.postId}`, { method: 'POST', body: { content: draft.trim() } });
       setComments((prev) => [...prev, created]);
+      setCommentCount((n) => n + 1);
       setDraft('');
     } catch { /* best-effort */ }
     finally { setBusy(false); }
@@ -69,6 +71,7 @@ function PostThread({ post, userId, onDelete }: { post: ForumPost; userId?: stri
 
   const deleteComment = async (id: string) => {
     setComments((prev) => prev.filter((c) => c.commentaireId !== id));
+    setCommentCount((n) => Math.max(0, n - 1));
     try { await apiFetch(`/api/forum/commentaires/${id}`, { method: 'DELETE' }); } catch { /* best-effort */ }
   };
 
@@ -95,7 +98,7 @@ function PostThread({ post, userId, onDelete }: { post: ForumPost; userId?: stri
               {dislikes}
             </button>
             <button type="button" onClick={loadComments} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--gray-500)', fontWeight: 600 }}>
-              {open ? 'Masquer' : `Commentaires (${post.commentCount ?? 0})`}
+              {open ? 'Masquer' : `Commentaires (${commentCount})`}
             </button>
             {post.authorId === userId && (
               <button type="button" onClick={() => onDelete(post.postId)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--accent)', fontWeight: 600 }}>Supprimer</button>
